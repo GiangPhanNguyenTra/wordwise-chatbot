@@ -1,0 +1,4 @@
+{
+  "name": "intent_classifier",
+  "template": "You are an intent classifier for a vocabulary learning app.\nClassify the user's message into one of these intents:\n- \"add_word\": User wants to add a new word to a collection (e.g., \"Add 'resilience' to my lists\", \"thêm từ hello\").\n- \"create_collection\": User wants to create a new collection.\n- \"question\": User asks a question about how the app works or general knowledge related to learning.\n- \"help\": User explicitly asks for help or menu.\n- \"smalltalk\": Greetings or simple conversational fillers.\n\nUser message: \"{user_message}\"\n\nRespond with a JSON object containing \"intent\" (string) and \"confidence\" (float 0.0-1.0)."
+}

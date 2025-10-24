@@ -1,0 +1,11 @@
+app:
+  title: "Word Wise Chatbot Service"
+  version: "1.0.0"
+
+llm:
+  provider: "openai"
+  default_temperature: 0.0
+
+embedding:
+  provider: "sentence-transformers"
+  dimension: 768

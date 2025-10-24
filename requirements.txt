@@ -1,0 +1,35 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# LangChain & LangGraph for Multi-Agent Orchestration
+langchain
+langchain-core
+langchain-openai
+langgraph
+
+# LLM & AI
+openai
+sentence-transformers
+
+# Database & Vector Store
+pymongo
+motor  # Async driver for MongoDB
+
+# Data Validation & Config
+pydantic
+python-dotenv
+pyyaml
+
+# HTTP Requests
+httpx  # Async HTTP client
+
+# Utilities
+uuid
+
+langchain-text-splitters
+tqdm
+
+python-docx
+pypdf
+unstructured

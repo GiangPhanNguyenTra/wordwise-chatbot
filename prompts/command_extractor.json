@@ -1,0 +1,4 @@
+{
+  "name": "command_extractor",
+  "template": "Extract structured entities from the user command.\nUser message: \"{user_message}\"\n\nTarget intents: \"add_word\", \"create_collection\".\nExtract:\n- \"action\": The identified intent.\n- \"word\": The vocabulary word to add (if applicable, else null).\n- \"collection\": The target collection name (if specified, else null).\n\nRespond with JSON."
+}
