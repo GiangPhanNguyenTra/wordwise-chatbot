@@ -33,3 +33,7 @@ tqdm
 python-docx
 pypdf
 unstructured
+
+langchain-groq
+google-generativeai
+langchain-google-genai
