@@ -42,18 +42,31 @@ def get_llm(temperature: float = 0.0):
         raise ValueError(f"Unsupported LLM_PROVIDER: {provider}.")
 
 def _extract_json_from_response(text: str) -> dict:
-    match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
+    # Thử trích xuất JSON từ ```json
+    match = re.search(r"```json\s*([\s\S]*?)\s*```", text, re.DOTALL)
     if match:
-        json_str = match.group(1)
+        json_str = match.group(1).strip()
     else:
-        json_str = text
-    
+        json_str = text.strip()
+
+    # Làm sạch JSON: Loại bỏ ký tự không mong muốn (e.g., xuống dòng thừa, tab)
+    json_str = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', json_str)  # Loại bỏ ký tự điều khiển
+    json_str = json_str.replace('\n', '').replace('\t', '')  # Loại bỏ xuống dòng và tab
+
     try:
-        return json.loads(json_str)
+        return json.loads(json_str, strict=False)
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from LLM response: {e}")
         print(f"Raw response was: {text}")
-        raise ValueError("Failed to parse JSON from LLM response.")
+        # Thử sửa lỗi cú pháp cơ bản (e.g., thêm dấu phẩy bị thiếu)
+        try:
+            # Tách thành các dòng và thêm dấu phẩy giữa các phần tử
+            lines = [line.strip() for line in json_str.split('}') if line.strip()]
+            cleaned_json = '},'.join(lines[:-1]) + '}' if lines else '{}'
+            return json.loads(cleaned_json, strict=False)
+        except json.JSONDecodeError as e2:
+            print(f"Failed to repair JSON: {e2}")
+            raise ValueError("Failed to parse JSON from LLM response after cleanup.")
 
 async def structured_llm_call(prompt_template: str, pydantic_model: Type[BaseModel], **kwargs) -> BaseModel:
     llm = get_llm()

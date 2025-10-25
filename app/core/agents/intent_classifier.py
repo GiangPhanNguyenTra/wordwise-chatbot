@@ -8,28 +8,24 @@ class IntentOutput(BaseModel):
     intent: str = Field(..., description="The classified intent")
     confidence: float = Field(..., ge=0.0, le=1.0)
 
-# 1. intent classified (RULE-BASED)
-INTENT_KEYWORDS = {
-    "help": ["help", "trợ giúp", "menu", "hướng dẫn", "cần giúp"],
-    "add_word": ["add", "add the word" , "thêm", "save", "lưu từ"],
+INTENT_KEYWORDS_STRICT = {
+    "add_word": ["add", "thêm", "save", "lưu từ", "add the word"],
     "create_collection": ["create", "tạo bộ", "new collection"],
+    "help": ["help", "trợ giúp", "menu"],
 }
 
-def hybrid_rule_based_classifier(message: str) -> Optional[Dict[str, Any]]:
+def strict_rule_based_classifier(message: str) -> Optional[Dict[str, Any]]:
     msg_lower = message.lower().strip()
-    # Ưu tiên các từ khóa của 'help' và các lệnh tạo/lưu
-    for intent, keywords in INTENT_KEYWORDS.items():
+    
+    for intent, keywords in INTENT_KEYWORDS_STRICT.items():
         if any(keyword in msg_lower for keyword in keywords):
             return {"intent": intent, "confidence": 1.0}
-    
-    if "làm được gì" in msg_lower or "chức năng" in msg_lower:
-        return {"intent": "help", "confidence": 1.0}
 
     return None
 
-# 2.  intent classified (LLM) 
-async def llm_classifier(message: str) -> Dict[str, Any]:
-    prompt_cfg = load_prompt("intent_classifier") 
+async def llm_classifier_for_dialogue(message: str) -> Dict[str, Any]:
+    print("--- Rules did not match. Falling back to LLM Classifier for dialogue analysis ---")
+    prompt_cfg = load_prompt("intent_classifier")
     
     try:
         result = await structured_llm_call(
@@ -42,15 +38,16 @@ async def llm_classifier(message: str) -> Dict[str, Any]:
         print(f"LLM Intent classification failed: {e}")
         return {"intent": "fallback", "confidence": 0.0}
 
-
 async def intent_classifier_node(state: AgentState) -> Dict[str, Any]:
+    print("--- [NODE] Hybrid Intent Classifier v2 ---")
     user_message = state["request"].message
     
-    rule_based_result = hybrid_rule_based_classifier(user_message)
+    command_result = strict_rule_based_classifier(user_message)
     
-    if rule_based_result:
-        # Nếu Rule-based thành công, dùng ngay kết quả
-        return rule_based_result
+    if command_result:
+        print(f"Intent classified by STRICT RULES: {command_result['intent']}")
+        return command_result
     
-    llm_result = await llm_classifier(user_message)
-    return llm_result
+    dialogue_result = await llm_classifier_for_dialogue(user_message)
+    print(f"Intent classified by LLM: {dialogue_result['intent']} with confidence {dialogue_result['confidence']}")
+    return dialogue_result

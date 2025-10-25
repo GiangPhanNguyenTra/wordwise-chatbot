@@ -1,3 +1,4 @@
+import asyncio
 from pydantic import BaseModel, Field
 from app.models.chat import AgentState
 from app.embeddings.vector_store import embed_text
@@ -15,33 +16,47 @@ async def _expand_query(question: str) -> str:
     print(f"--- Expanding query: '{question}' ---")
     prompt_cfg = load_prompt("query_expansion")
     expanded_query = await basic_llm_call(prompt_cfg["template"], question=question)
-    # Loại bỏ các phần giải thích thừa từ LLM
     clean_query = expanded_query.split('\n')[0].strip().strip('"')
     print(f"--- Expanded query: '{clean_query}' ---")
     return clean_query
 
 async def retriever_agent_node(state: AgentState) -> dict[str, any]:
-    print("--- [NODE] Retriever Agent (Query Expansion) ---")
+    print("--- [NODE] Optimized Parallel Retriever Agent ---")
     original_query = state["request"].message
     
-    # BƯỚC 1: LÀM GIÀU CÂU HỎI
-    expanded_query = await _expand_query(original_query)
+    # Kỹ thuật tối ưu: Chạy song song việc làm giàu câu hỏi và tìm kiếm với câu hỏi gốc
+    # Điều này giúp giảm độ trễ tổng thể.
+    expanded_query_task = asyncio.create_task(_expand_query(original_query))
+    original_query_vec = embed_text(original_query)
+    original_search_task = asyncio.create_task(
+        MongoService.vector_search("rag_documents", original_query_vec, limit=2)
+    )
+
+    # Chờ tác vụ làm giàu câu hỏi hoàn thành
+    expanded_query = await expanded_query_task
+    expanded_query_vec = embed_text(expanded_query)
+    expanded_search_task = asyncio.create_task(
+        MongoService.vector_search("rag_documents", expanded_query_vec, limit=2)
+    )
+
+    # Lấy kết quả từ cả hai lần tìm kiếm
+    original_docs, expanded_docs = await asyncio.gather(
+        original_search_task,
+        expanded_search_task
+    )
+
+    # Gộp và loại bỏ các documents trùng lặp
+    all_docs = {doc['content']: doc for doc in expanded_docs + original_docs}.values()
     
-    # BƯỚC 2: TẠO EMBEDDING TỪ CÂU HỎI ĐÃ LÀM GIÀU
-    query_vec = embed_text(expanded_query)
-    
-    # BƯỚC 3: TÌM KIẾM VECTOR
-    docs = await MongoService.vector_search("rag_documents", query_vec, limit=3)
-    
-    if not docs:
+    if not all_docs:
         return {
             "response_type": "result",
             "agent_outcome": {"message": "Xin lỗi, tôi không tìm thấy tài liệu liên quan."}
         }
     
-    context_str = "\n\n".join([f"Source: {d.get('source', 'N/A')}\nContent: {d.get('content', '')}" for d in docs])
+    context_str = "\n\n".join([f"Source: {d.get('source', 'N/A')}\nContent: {d.get('content', '')}" for d in all_docs])
     
-    # BƯỚC 4: TẠO CÂU TRẢ LỜI
+    # Tạo câu trả lời với ngữ cảnh đầy đủ hơn
     rag_prompt_cfg = load_prompt("rag_prompt")
     rag_result = await structured_llm_call(
         rag_prompt_cfg["template"],
@@ -52,7 +67,7 @@ async def retriever_agent_node(state: AgentState) -> dict[str, any]:
 
     payload = {
         **rag_result.model_dump(),
-        "sources": docs,
+        "sources": list(all_docs),
         "suggested_actions": [
             {"label": "Xem hướng dẫn chi tiết", "type": "open_url", "url": "/help/docs"},
         ]

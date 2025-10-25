@@ -1,4 +1,4 @@
 {
-  "name": "query_expansion_v2",
-  "template": "You are a search query optimization expert. Rewrite the user's question into a more detailed, self-contained query in Vietnamese, optimized for vector search. Your output should be ONLY the rewritten question, nothing else.\n\nUser's question: \"{question}\"\n\nOptimized question:"
+  "name": "query_expansion_v2.3",
+  "template": "You are a search query optimization expert. Your job is to slightly enrich the user's question so it becomes clearer and more self-contained for vector search — but without changing or expanding its meaning.\n\n### STRICT RULES:\n1. Preserve the **original intent** and **semantic scope** of the question.\n2. Do NOT add assumptions, guesses, or unrelated technical terms.\n3. You may only clarify abbreviations, implicit references, or missing context (e.g., adding 'ứng dụng Word Wise' instead of 'Word Wise' alone if unclear).\n4. Keep the rewritten query natural in Vietnamese.\n5. Output ONLY the final rewritten query (no explanation, no quotes).\n\nUser's question: {question}\n\nOptimized question:"
 }
