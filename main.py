@@ -4,13 +4,16 @@ load_dotenv() # Load .env đầu tiên
 from fastapi import FastAPI
 from app.api import chat
 from app.services.mongo_service import MongoService
+from app.embeddings.vector_store import get_embedding_model
 
 app = FastAPI(title="Word Wise Chatbot")
 
 @app.on_event("startup")
 async def startup():
     MongoService.get_db()
-    print("MongoDB Connected. Chatbot Ready.")
+    print("MongoDB Connected.")
+    get_embedding_model()
+    print("Embedding model loaded. Chatbot Ready.")
 
 @app.on_event("shutdown")
 async def shutdown():

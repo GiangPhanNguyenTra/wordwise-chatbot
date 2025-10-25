@@ -1,0 +1,4 @@
+{
+  "name": "hyde_prompt",
+  "template": "You are an AI assistant. Your task is to generate a short, hypothetical document that provides a direct and factual answer to the user's question. The document should be written in Vietnamese as if it were an excerpt from a user manual.\n\nUser's question: \"{question}\"\n\nHypothetical document excerpt:"
+}
