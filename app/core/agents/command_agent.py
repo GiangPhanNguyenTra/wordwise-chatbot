@@ -34,7 +34,7 @@ async def _process_add_word_flow(user_id: str, word_to_add: str, collection_name
     
     return {
         "response_type": "result",
-        "intent": "add_word",
+        "intent_from_agent": "add_word",
         "agent_outcome": {
             "message": f"Đã thêm từ '{word_to_add}' vào bộ sưu tập {collection.get('name')}.",
             "payload": {
@@ -45,10 +45,9 @@ async def _process_add_word_flow(user_id: str, word_to_add: str, collection_name
         }
     }
 
-async def handle_intent_add_word(state: AgentState) -> Dict[str, Any]:
+async def handle_stateless_add_word(state: AgentState) -> Dict[str, Any]:
     user_id = state["request"].user_id
     msg = state["request"].message
-
     extract_prompt = load_prompt("command_extractor")
     entities = await structured_llm_call(extract_prompt["template"], CommandExtraction, user_message=msg)
     
@@ -63,10 +62,7 @@ async def handle_intent_add_word(state: AgentState) -> Dict[str, Any]:
     if not collection:
         pending_context = {
             "action": "confirm_create_collection",
-            "data": {
-                "collection_name": target_collection_name,
-                "word_to_add": word_to_add
-            }
+            "data": {"collection_name": target_collection_name, "word_to_add": word_to_add}
         }
         return {
             "response_type": "confirm",
@@ -84,27 +80,34 @@ async def command_agent_node(state: AgentState) -> Dict[str, Any]:
     user_id = state["request"].user_id
     message = state["request"].message
     pending_action = state.get("pending_action_context")
+    intent = state.get("intent")
 
     if pending_action:
-        action_type = pending_action.get("action")
-        if action_type == "confirm_create_collection" and message.lower() in ["yes", "y", "ok", "đồng ý", "tạo đi", "tạo"]:
-            data = pending_action["data"]
-            collection_name = data["collection_name"]
-            word_to_add = data["word_to_add"]
-            
-            print(f"User confirmed. Creating collection '{collection_name}'...")
-            await MongoService.create_collection(user_id, collection_name)
-            
-            print(f"Proceeding to add word '{word_to_add}' to new collection.")
-            return await _process_add_word_flow(user_id, word_to_add, collection_name)
+        is_confirmation = message.lower() in ["yes", "y", "ok", "đồng ý", "tạo đi", "tạo"]
+        if is_confirmation:
+            action_type = pending_action.get("action")
+            if action_type == "confirm_create_collection":
+                data = pending_action["data"]
+                collection_name = data["collection_name"]
+                word_to_add = data["word_to_add"]
+
+                print(f"User confirmed. Creating collection '{collection_name}' for user '{user_id}'...")
+                await MongoService.create_collection(user_id, collection_name)
+                print(f"Collection '{collection_name}' created successfully.")
+                
+                print(f"Proceeding to add word '{word_to_add}' to the new collection.")
+                return await _process_add_word_flow(user_id, word_to_add, collection_name)
         else:
+            print("User interrupted a pending action. Cancelling and processing new request.")
+            if intent == "add_word":
+                 return await handle_stateless_add_word(state)
             return {
                 "response_type": "result",
-                "agent_outcome": {"message": "Đã hủy thao tác. Bạn cần giúp gì khác không?"}
+                "agent_outcome": {"message": "Đã hủy thao tác cũ. Xin mời bạn đưa ra yêu cầu mới."}
             }
 
-    intent = state.get("intent")
+    # Luồng xử lý stateless bình thường
     if intent == "add_word":
-        return await handle_intent_add_word(state)
+        return await handle_stateless_add_word(state)
     
     return {"response_type": "result", "agent_outcome": {"message": "Lệnh này hiện chưa được hỗ trợ."}}

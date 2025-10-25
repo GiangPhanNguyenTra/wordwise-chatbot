@@ -1,4 +1,3 @@
-# app/api/chat.py
 from fastapi import APIRouter, HTTPException
 from app.models.chat import ChatRequest, ChatResponse
 from app.core.orchestrator import graph_app
@@ -16,7 +15,8 @@ async def chat_endpoint(request: ChatRequest):
             "request": request,
             "memory": history,
             "pending_action_context": pending_action,
-            "response_type": "result"
+            "response_type": "result",
+            "intent_from_agent": None,
         }
         
         result_state = await graph_app.ainvoke(initial_state)
@@ -30,11 +30,13 @@ async def chat_endpoint(request: ChatRequest):
             {"role": "assistant", "content": final_response.message}
         ]
         
+        new_pending_context = result_state.get("pending_action_context")
+        
         await MongoService.append_to_conversation(
             request.session_id, 
             request.user_id, 
             new_messages,
-            result_state.get("pending_action_context")
+            new_pending_context
         )
              
         return final_response
