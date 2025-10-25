@@ -1,7 +1,7 @@
+# app/models/chat.py
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List, TypedDict, Union
+from typing import Optional, Dict, Any, List, TypedDict
 
-# --- API Models (Khớp 100% với spec) ---
 class ChatRequest(BaseModel):
     user_id: str
     session_id: str
@@ -11,19 +11,18 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     status: str = "ok"
     session_id: str
-    type: str = Field(..., description="'result', 'confirm', or 'clarify'")
+    type: str
     intent: str
     payload: Optional[Dict[str, Any]] = None
     message: str
 
-# --- LangGraph State ---
 class AgentState(TypedDict):
     request: ChatRequest
-    intent: str
+    memory: List[Dict[str, str]]
+    pending_action_context: Optional[Dict[str, Any]]
+    intent: str 
+    intent_from_agent: Optional[str] 
     confidence: float
-    # Dữ liệu tạm thời được các node xử lý và truyền đi
     agent_outcome: Optional[Dict[str, Any]]
-    # Loại response cuối cùng sẽ được format
     response_type: str
-    # Response cuối cùng sau khi format
     final_response: Optional[ChatResponse]

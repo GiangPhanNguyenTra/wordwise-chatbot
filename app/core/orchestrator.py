@@ -1,3 +1,4 @@
+# app/core/orchestrator.py
 from langgraph.graph import StateGraph, END
 from app.models.chat import AgentState, ChatResponse
 from app.core.agents import (
@@ -5,14 +6,17 @@ from app.core.agents import (
     helper_agent, fallback_agent
 )
 
-# --- Routing Logic ---
-def route_intent(state: AgentState) -> str:
+def route_logic(state: AgentState) -> str:
+    if state.get("pending_action_context"):
+        print("--- ROUTING: Detected pending action -> To Command Agent ---")
+        return "command"
+
     intent = state.get("intent")
     conf = state.get("confidence", 0.0)
+    print(f"--- ROUTING: By intent '{intent}' with confidence {conf} ---")
     
-    if conf < 0.6: # Confidence thấp -> làm rõ
+    if conf < 0.7:
         return "clarification"
-        
     if intent in ["add_word", "create_collection"]:
         return "command"
     elif intent == "question":
@@ -21,9 +25,7 @@ def route_intent(state: AgentState) -> str:
         return "helper"
     return "fallback"
 
-# --- Graph Nodes ---
 async def clarification_node(state: AgentState) -> dict:
-    """Node để xử lý khi intent không chắc chắn."""
     print("--- [NODE] Clarification ---")
     return {
         "response_type": "clarify",
@@ -39,20 +41,20 @@ async def clarification_node(state: AgentState) -> dict:
     }
 
 def response_formatter_node(state: AgentState) -> dict:
-    """Node cuối cùng để format response theo đúng chuẩn API."""
     print("--- [NODE] Response Formatter ---")
     outcome = state.get("agent_outcome", {})
     
+    final_intent = state.get("intent_from_agent") or state.get("intent", "unknown")
+
     final_res = ChatResponse(
         session_id=state["request"].session_id,
-        intent=state.get("intent", "unknown"),
+        intent=final_intent,
         type=state.get("response_type", "result"),
         message=outcome.get("message", "Đã xảy ra lỗi."),
         payload=outcome.get("payload")
     )
     return {"final_response": final_res}
 
-# --- Graph Construction ---
 def build_graph():
     workflow = StateGraph(AgentState)
     
@@ -68,7 +70,7 @@ def build_graph():
     
     workflow.add_conditional_edges(
         "classifier",
-        route_intent,
+        route_logic,
         {
             "command": "command",
             "retriever": "retriever",
@@ -78,7 +80,6 @@ def build_graph():
         }
     )
     
-    # Tất cả các node xử lý chính đều dẫn đến formatter
     for node in ["command", "retriever", "helper", "fallback", "clarification"]:
         workflow.add_edge(node, "formatter")
         

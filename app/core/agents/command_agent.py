@@ -1,6 +1,6 @@
-# app/core/agents/command_agent.py
 import uuid
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.models.chat import AgentState
 from app.models.word import EnrichedWord
@@ -14,108 +14,97 @@ class CommandExtraction(BaseModel):
     collection: Optional[str] = None
 
 async def _enrich_word_data(word: str) -> EnrichedWord:
-    """Helper function to perform the full enrichment flow."""
     raw_data = await fetch_dictionary_data(word)
     raw_data_str = str(raw_data) if raw_data else "No dictionary data found."
-    
     enrich_prompt = load_prompt("enrichment")
-    enriched_data = await structured_llm_call(
-        enrich_prompt["template"],
-        EnrichedWord,
-        word=word,
-        raw_data=raw_data_str
-    )
-    return enriched_data
+    return await structured_llm_call(enrich_prompt["template"], EnrichedWord, word=word, raw_data=raw_data_str)
 
-# --- Logic Mock để kiểm tra Collection ---
-# Giả lập rằng user "u123" chỉ có collection "Personal" và "General"
-MOCK_USER_COLLECTIONS = {
-    "u123": ["personal", "general"]
-}
+async def _process_add_word_flow(user_id: str, word_to_add: str, collection_name: str):
+    enriched_word = await _enrich_word_data(word_to_add)
+    collection = await MongoService.find_collection_by_name(user_id, collection_name)
+    if not collection:
+        raise ValueError(f"Collection {collection_name} not found unexpectedly.")
 
-async def check_collection_exists(user_id: str, collection_name: str) -> bool:
-    """Mock function to check if a collection exists for a user."""
-    user_collections = MOCK_USER_COLLECTIONS.get(user_id, [])
-    return collection_name.lower() in user_collections
-
-async def command_agent_node(state: AgentState) -> Dict[str, Any]:
-    print("--- [NODE] Command Agent ---")
-    msg = state["request"].message
-    user_id = state["request"].user_id
+    document_to_save = enriched_word.model_dump()
+    document_to_save["user_id"] = user_id
+    document_to_save["collection_id"] = str(collection.get("_id"))
+    document_to_save["collection_name"] = collection.get("name")
     
-    # 1. Extract entities
+    word_id = await MongoService.save_word_to_db(document_to_save)
+    
+    return {
+        "response_type": "result",
+        "intent": "add_word",
+        "agent_outcome": {
+            "message": f"Đã thêm từ '{word_to_add}' vào bộ sưu tập {collection.get('name')}.",
+            "payload": {
+                "wordId": word_id,
+                "collectionId": str(collection.get("_id")),
+                **enriched_word.model_dump()
+            }
+        }
+    }
+
+async def handle_intent_add_word(state: AgentState) -> Dict[str, Any]:
+    user_id = state["request"].user_id
+    msg = state["request"].message
+
     extract_prompt = load_prompt("command_extractor")
     entities = await structured_llm_call(extract_prompt["template"], CommandExtraction, user_message=msg)
     
+    target_collection_name = entities.collection or "General"
     word_to_add = entities.word
-    # Nếu không chỉ định collection, mặc định là "General"
-    target_collection = entities.collection or "General"
-    
-    if not word_to_add:
-        return {
-            "response_type": "result",
-            "agent_outcome": {"message": "Không tìm thấy từ nào để thêm. Vui lòng thử lại."}
-        }
 
-    # 2. Check collection existence
-    collection_exists = await check_collection_exists(user_id, target_collection)
+    if not word_to_add:
+        return {"response_type": "result", "agent_outcome": {"message": "Không tìm thấy từ nào để thêm."}}
+
+    collection = await MongoService.find_collection_by_name(user_id, target_collection_name)
     
-    if not collection_exists:
-        # Nếu collection không tồn tại, trả về response 'confirm'
-        print(f"Collection '{target_collection}' not found for user '{user_id}'. Returning 'confirm'.")
-        return {
-            "response_type": "confirm",
-            "agent_outcome": {
-                "message": f"Bạn chưa có bộ sưu tập '{target_collection}'. Bạn có muốn tạo nó không?",
-                "payload": {
-                    "suggested_action": {
-                        "action": "create_collection",
-                        "collection_name": target_collection
-                    }
-                }
+    if not collection:
+        pending_context = {
+            "action": "confirm_create_collection",
+            "data": {
+                "collection_name": target_collection_name,
+                "word_to_add": word_to_add
             }
         }
-
-    # 3. Enrichment (Nếu collection đã tồn tại)
-    print(f"Collection '{target_collection}' found. Proceeding with enrichment for '{word_to_add}'.")
-    enriched_word = await _enrich_word_data(word_to_add)
-    
-    # 4. Prepare Mock API Payload for Spring Boot
-    mock_api_payload = {
-        "client_request_id": str(uuid.uuid4()),
-        "word": enriched_word.word,
-        "phonetic": enriched_word.phonetics.uk.text if enriched_word.phonetics and enriched_word.phonetics.uk else None,
-        "definitions_en": [enriched_word.definition_en] if enriched_word.definition_en else [],
-        "examples_en": [ex.en for ex in enriched_word.examples if ex.en],
-        "definition_vi": enriched_word.definition_vi,
-        "examples_vi": [ex.vi for ex in enriched_word.examples if ex.vi],
-        "idioms": enriched_word.idioms,
-        "tags": [target_collection],
-        "added_by": user_id,
-        "source": "chatbot"
-    }
-    
-    # 5. Persist to MongoDB (Mocking the backend call)
-    word_id = await MongoService.mock_save_word(mock_api_payload)
-    print(f"Word '{word_to_add}' mock-saved to MongoDB with ID: {word_id}")
-    
-    # 6. Mock Response from Backend
-    mock_backend_response = {
-      "status": "created",
-      "wordId": word_id,
-      "collectionId": "c456_mock" # ID của collection 'Personal'
-    }
-
-    # 7. Prepare final payload cho Frontend
-    final_payload = {
-        **mock_backend_response,
-        **enriched_word.model_dump()
-    }
-
-    return {
-        "response_type": "result",
-        "agent_outcome": {
-            "message": f"Đã thêm từ '{word_to_add}' vào bộ sưu tập {target_collection}.",
-            "payload": final_payload
+        return {
+            "response_type": "confirm",
+            "pending_action_context": pending_context,
+            "agent_outcome": {
+                "message": f"Bạn chưa có bộ sưu tập '{target_collection_name}'. Bạn có muốn tạo nó không?",
+                "payload": pending_context
+            }
         }
-    }
+    
+    return await _process_add_word_flow(user_id, word_to_add, target_collection_name)
+
+async def command_agent_node(state: AgentState) -> Dict[str, Any]:
+    print("--- [NODE] Command Agent ---")
+    user_id = state["request"].user_id
+    message = state["request"].message
+    pending_action = state.get("pending_action_context")
+
+    if pending_action:
+        action_type = pending_action.get("action")
+        if action_type == "confirm_create_collection" and message.lower() in ["yes", "y", "ok", "đồng ý", "tạo đi", "tạo"]:
+            data = pending_action["data"]
+            collection_name = data["collection_name"]
+            word_to_add = data["word_to_add"]
+            
+            print(f"User confirmed. Creating collection '{collection_name}'...")
+            await MongoService.create_collection(user_id, collection_name)
+            
+            print(f"Proceeding to add word '{word_to_add}' to new collection.")
+            return await _process_add_word_flow(user_id, word_to_add, collection_name)
+        else:
+            return {
+                "response_type": "result",
+                "agent_outcome": {"message": "Đã hủy thao tác. Bạn cần giúp gì khác không?"}
+            }
+
+    intent = state.get("intent")
+    if intent == "add_word":
+        return await handle_intent_add_word(state)
+    
+    return {"response_type": "result", "agent_outcome": {"message": "Lệnh này hiện chưa được hỗ trợ."}}

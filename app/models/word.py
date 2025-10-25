@@ -13,12 +13,18 @@ class ExamplePair(BaseModel):
     en: Optional[str] = None
     vi: Optional[str] = None
 
+class IdiomPair(BaseModel):
+    en: str
+    vi: str
+
 class EnrichedWord(BaseModel):
     word: str
+    word_vn: Optional[str] = None
     phonetics: Optional[Phonetics] = None
     partOfSpeech: Optional[str] = None
     definition_en: Optional[str] = None
     definition_vi: Optional[str] = None
     examples: List[ExamplePair] = []
-    idioms: List[str] = []
+    idioms: List[IdiomPair] = []
+    related_phrases: List[str] = []
     source: Optional[str] = None

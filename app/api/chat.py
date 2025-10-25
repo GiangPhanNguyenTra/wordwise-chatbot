@@ -1,19 +1,41 @@
+# app/api/chat.py
 from fastapi import APIRouter, HTTPException
 from app.models.chat import ChatRequest, ChatResponse
 from app.core.orchestrator import graph_app
+from app.services.mongo_service import MongoService
 
 router = APIRouter()
 
 @router.post("/message", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     try:
-        initial_state = {"request": request, "response_type": "result"}
+        history = await MongoService.get_conversation_history(request.session_id)
+        pending_action = await MongoService.get_pending_action(request.session_id)
+        
+        initial_state = {
+            "request": request,
+            "memory": history,
+            "pending_action_context": pending_action,
+            "response_type": "result"
+        }
         
         result_state = await graph_app.ainvoke(initial_state)
         
         final_response = result_state.get("final_response")
         if not final_response:
              raise HTTPException(status_code=500, detail="Graph failed to produce a response.")
+             
+        new_messages = [
+            {"role": "user", "content": request.message},
+            {"role": "assistant", "content": final_response.message}
+        ]
+        
+        await MongoService.append_to_conversation(
+            request.session_id, 
+            request.user_id, 
+            new_messages,
+            result_state.get("pending_action_context")
+        )
              
         return final_response
 
