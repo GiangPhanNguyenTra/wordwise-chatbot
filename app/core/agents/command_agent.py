@@ -1,46 +1,20 @@
 import uuid
 import re
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from app.models.chat import AgentState
-from app.models.word import EnrichedWord, IdiomPair
-from app.core.tools.llm_tool import structured_llm_call
-from app.core.tools.dictionary_tool import fetch_dictionary_data
+from app.models.word import EnrichedWord
+from app.core.tools.enrichment_tool import enrich_word_data
 from app.utils.helpers import load_prompt
 from app.services.mongo_service import MongoService
+from app.core.tools.llm_tool import structured_llm_call
 
 class CommandExtraction(BaseModel):
     word: Optional[str] = None
     collection: Optional[str] = None
 
-def _normalize_and_deduplicate_idioms(idioms: List[IdiomPair]) -> List[IdiomPair]:
-    seen = set()
-    unique_idioms = []
-    for idiom_pair in idioms:
-        normalized_idiom = idiom_pair.en.lower().strip()
-        if normalized_idiom.startswith("to be "):
-            normalized_idiom = normalized_idiom[6:]
-        elif normalized_idiom.startswith("to "):
-            normalized_idiom = normalized_idiom[3:]
-        
-        if normalized_idiom not in seen:
-            seen.add(normalized_idiom)
-            unique_idioms.append(idiom_pair)
-    return unique_idioms
-
-async def _enrich_word_data(word: str) -> EnrichedWord:
-    raw_data = await fetch_dictionary_data(word)
-    raw_data_str = str(raw_data) if raw_data else "No dictionary data found."
-    enrich_prompt = load_prompt("enrichment")
-    enriched_data = await structured_llm_call(enrich_prompt["template"], EnrichedWord, word=word, raw_data=raw_data_str)
-    
-    if enriched_data.idioms:
-        enriched_data.idioms = _normalize_and_deduplicate_idioms(enriched_data.idioms)
-    
-    return enriched_data
-
 async def _process_add_word_flow(user_id: str, word_to_add: str, collection_name: str):
-    enriched_word = await _enrich_word_data(word_to_add)
+    enriched_word = await enrich_word_data(word_to_add)
     collection = await MongoService.find_collection_by_name(user_id, collection_name)
     if not collection:
         raise ValueError(f"Collection {collection_name} not found unexpectedly.")
