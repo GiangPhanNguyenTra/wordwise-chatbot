@@ -83,3 +83,31 @@ class MongoService:
         if convo:
             return convo.get("pending_action_context")
         return None
+    
+    @classmethod
+    async def vector_search(cls, collection_name: str, query_vector: List[float], limit: int = 3) -> List[Dict[str, Any]]:
+        db = cls.get_db()
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "content_embeddings",
+                    "queryVector": query_vector,
+                    "numCandidates": 50,
+                    "limit": limit
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "content_embeddings": 0,
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        try:
+            results = await db[collection_name].aggregate(pipeline).to_list(length=limit)
+            return results
+        except Exception as e:
+            print(f"Vector search error: {e}")
+            return []
