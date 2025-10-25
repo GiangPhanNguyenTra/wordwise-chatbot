@@ -42,10 +42,10 @@ async def clarification_node(state: AgentState) -> dict:
 
 def response_formatter_node(state: AgentState) -> dict:
     print("--- [NODE] Response Formatter ---")
-    outcome = state.get("agent_outcome", {})
     
     final_intent = state.get("intent_from_agent") or state.get("intent", "unknown")
-
+    outcome = state.get("agent_outcome", {})
+    
     final_res = ChatResponse(
         session_id=state["request"].session_id,
         intent=final_intent,
@@ -68,17 +68,13 @@ def build_graph():
     
     workflow.set_entry_point("classifier")
     
-    workflow.add_conditional_edges(
-        "classifier",
-        route_logic,
-        {
-            "command": "command",
-            "retriever": "retriever",
-            "helper": "helper",
-            "fallback": "fallback",
-            "clarification": "clarification"
-        }
-    )
+    workflow.add_conditional_edges("classifier", route_logic, {
+        "command": "command",
+        "retriever": "retriever",
+        "helper": "helper",
+        "fallback": "fallback",
+        "clarification": "clarification"
+    })
     
     for node in ["command", "retriever", "helper", "fallback", "clarification"]:
         workflow.add_edge(node, "formatter")

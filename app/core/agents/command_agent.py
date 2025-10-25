@@ -1,9 +1,9 @@
 import uuid
 import re
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.models.chat import AgentState
-from app.models.word import EnrichedWord
+from app.models.word import EnrichedWord, IdiomPair
 from app.core.tools.llm_tool import structured_llm_call
 from app.core.tools.dictionary_tool import fetch_dictionary_data
 from app.utils.helpers import load_prompt
@@ -13,11 +13,31 @@ class CommandExtraction(BaseModel):
     word: Optional[str] = None
     collection: Optional[str] = None
 
+def _normalize_and_deduplicate_idioms(idioms: List[IdiomPair]) -> List[IdiomPair]:
+    seen = set()
+    unique_idioms = []
+    for idiom_pair in idioms:
+        normalized_idiom = idiom_pair.en.lower().strip()
+        if normalized_idiom.startswith("to be "):
+            normalized_idiom = normalized_idiom[6:]
+        elif normalized_idiom.startswith("to "):
+            normalized_idiom = normalized_idiom[3:]
+        
+        if normalized_idiom not in seen:
+            seen.add(normalized_idiom)
+            unique_idioms.append(idiom_pair)
+    return unique_idioms
+
 async def _enrich_word_data(word: str) -> EnrichedWord:
     raw_data = await fetch_dictionary_data(word)
     raw_data_str = str(raw_data) if raw_data else "No dictionary data found."
     enrich_prompt = load_prompt("enrichment")
-    return await structured_llm_call(enrich_prompt["template"], EnrichedWord, word=word, raw_data=raw_data_str)
+    enriched_data = await structured_llm_call(enrich_prompt["template"], EnrichedWord, word=word, raw_data=raw_data_str)
+    
+    if enriched_data.idioms:
+        enriched_data.idioms = _normalize_and_deduplicate_idioms(enriched_data.idioms)
+    
+    return enriched_data
 
 async def _process_add_word_flow(user_id: str, word_to_add: str, collection_name: str):
     enriched_word = await _enrich_word_data(word_to_add)
@@ -90,23 +110,13 @@ async def command_agent_node(state: AgentState) -> Dict[str, Any]:
                 data = pending_action["data"]
                 collection_name = data["collection_name"]
                 word_to_add = data["word_to_add"]
-
-                print(f"User confirmed. Creating collection '{collection_name}' for user '{user_id}'...")
+                print(f"User confirmed. Creating collection '{collection_name}'...")
                 await MongoService.create_collection(user_id, collection_name)
-                print(f"Collection '{collection_name}' created successfully.")
-                
-                print(f"Proceeding to add word '{word_to_add}' to the new collection.")
+                print(f"Collection created. Proceeding to add word '{word_to_add}'.")
                 return await _process_add_word_flow(user_id, word_to_add, collection_name)
         else:
-            print("User interrupted a pending action. Cancelling and processing new request.")
-            if intent == "add_word":
-                 return await handle_stateless_add_word(state)
-            return {
-                "response_type": "result",
-                "agent_outcome": {"message": "Đã hủy thao tác cũ. Xin mời bạn đưa ra yêu cầu mới."}
-            }
+            print("User interrupted pending action. Processing new request.")
 
-    # Luồng xử lý stateless bình thường
     if intent == "add_word":
         return await handle_stateless_add_word(state)
     

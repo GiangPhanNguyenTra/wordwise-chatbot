@@ -26,5 +26,5 @@ class EnrichedWord(BaseModel):
     definition_vi: Optional[str] = None
     examples: List[ExamplePair] = []
     idioms: List[IdiomPair] = []
-    related_phrases: List[str] = []
+    synonyms: List[str] = []
     source: Optional[str] = None
