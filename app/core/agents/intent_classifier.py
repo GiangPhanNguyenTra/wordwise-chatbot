@@ -44,7 +44,6 @@ async def llm_classifier(message: str) -> Dict[str, Any]:
 
 
 async def intent_classifier_node(state: AgentState) -> Dict[str, Any]:
-    print("--- [NODE] Hybrid Intent Classifier ---")
     user_message = state["request"].message
     
     rule_based_result = hybrid_rule_based_classifier(user_message)

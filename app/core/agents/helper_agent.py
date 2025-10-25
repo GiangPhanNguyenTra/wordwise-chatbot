@@ -1,39 +1,34 @@
-from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any
 from app.models.chat import AgentState
-from app.core.tools.llm_tool import structured_llm_call
-from app.utils.helpers import load_prompt
 
-class SuggestedAction(BaseModel):
-    label: str
-    type: str
-    value: str
-
-class HelperOutput(BaseModel):
-    message: str
-    suggested_actions: List[SuggestedAction]
+STATIC_HELPER_MESSAGE = "Chào mừng bạn đến với Word Wise! Bạn có thể thêm từ vựng mới, hỏi về tính năng của ứng dụng hoặc tạo bộ từ vựng mới."
+STATIC_SUGGESTED_ACTIONS = [
+    {
+        "label": "Thêm một từ vựng mới",
+        "type": "user_input",
+        "value": "Thêm từ 'serendipity' vào bộ General"
+    },
+    {
+        "label": "Cách lặp lại ngắt quãng hoạt động?",
+        "type": "user_input",
+        "value": "Lặp lại ngắt quãng hoạt động như thế nào?"
+    },
+    {
+        "label": "Tạo một bộ từ vựng",
+        "type": "user_input",
+        "value": "Tạo bộ từ vựng cho chủ đề 'Travel'"
+    }
+]
 
 async def helper_agent_node(state: AgentState) -> Dict[str, Any]:
-    print("--- [NODE] LLM-powered Helper Agent ---")
-    prompt_cfg = load_prompt("helper_prompt")
+    print("--- [NODE] Rule-based Helper Agent ---")
     
-    try:
-        result = await structured_llm_call(prompt_cfg["template"], HelperOutput)
-        
-        return {
-            "response_type": "result",
-            "agent_outcome": {
-                "message": result.message,
-                "payload": {
-                    "suggested_actions": [action.model_dump() for action in result.suggested_actions]
-                }
+    return {
+        "response_type": "result",
+        "agent_outcome": {
+            "message": STATIC_HELPER_MESSAGE,
+            "payload": {
+                "suggested_actions": STATIC_SUGGESTED_ACTIONS
             }
         }
-    except Exception as e:
-        print(f"Helper agent failed: {e}")
-        return {
-            "response_type": "result",
-            "agent_outcome": {
-                "message": "Tôi có thể giúp bạn thêm từ mới và trả lời các câu hỏi về ứng dụng."
-            }
-        }
+    }

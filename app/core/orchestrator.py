@@ -15,15 +15,14 @@ def route_logic(state: AgentState) -> str:
     conf = state.get("confidence", 0.0)
     print(f"--- ROUTING: By intent '{intent}' with confidence {conf} ---")
     
-    if conf < 0.7:
-        return "clarification"
-    if intent in ["add_word", "create_collection"]:
-        return "command"
-    elif intent == "question":
+    if intent == "app_question":
         return "retriever"
+    elif intent in ["add_word", "create_collection"]:
+        return "command"
     elif intent == "help":
         return "helper"
-    return "fallback"
+    else:
+        return "fallback"
 
 async def clarification_node(state: AgentState) -> dict:
     print("--- [NODE] Clarification ---")
@@ -34,7 +33,7 @@ async def clarification_node(state: AgentState) -> dict:
             "payload": {
                 "suggested_actions": [
                     {"label": "Thêm từ mới", "intent": "add_word"},
-                    {"label": "Hỏi đáp", "intent": "question"},
+                    {"label": "Hỏi đáp", "intent": "app_question"},
                 ]
             }
         }
