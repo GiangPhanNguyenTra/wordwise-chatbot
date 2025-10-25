@@ -1,0 +1,4 @@
+{
+  "name": "query_expansion",
+  "template": "You are an AI assistant specializing in search query optimization. Your task is to rewrite a user's question into a more detailed and context-rich version suitable for a vector database search. The rewritten query should be a clear, self-contained question in Vietnamese.\n\nUser's original question: \"{question}\"\n\nRewritten, optimized question:"
+}
