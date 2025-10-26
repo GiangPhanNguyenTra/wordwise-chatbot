@@ -1,18 +1,19 @@
+# app/core/tools/enrichment_tool.py
 from typing import List
-from app.models.word import EnrichedWord, IdiomPair
+from app.models.word import EnrichedWord, TranslatedPhrase
 from app.core.tools.llm_tool import structured_llm_call
 from app.core.tools.dictionary_tool import fetch_dictionary_data
 from app.utils.helpers import load_prompt
 
-def _normalize_and_deduplicate_idioms(idioms: List[IdiomPair]) -> List[IdiomPair]:
+def _normalize_and_deduplicate_phrases(phrases: List[TranslatedPhrase]) -> List[TranslatedPhrase]:
     seen = set()
-    unique_idioms = []
-    for idiom_pair in idioms:
-        normalized_idiom = idiom_pair.en.lower().strip().removeprefix("to ").removeprefix("to be ")
-        if normalized_idiom not in seen:
-            seen.add(normalized_idiom)
-            unique_idioms.append(idiom_pair)
-    return unique_idioms
+    unique_phrases = []
+    for phrase_pair in phrases:
+        normalized_phrase = phrase_pair.en.lower().strip().removeprefix("to ").removeprefix("to be ")
+        if normalized_phrase not in seen:
+            seen.add(normalized_phrase)
+            unique_phrases.append(phrase_pair)
+    return unique_phrases
 
 async def enrich_word_data(word: str) -> EnrichedWord:
     raw_data = await fetch_dictionary_data(word)
@@ -27,6 +28,10 @@ async def enrich_word_data(word: str) -> EnrichedWord:
     )
     
     if enriched_data.idioms:
-        enriched_data.idioms = _normalize_and_deduplicate_idioms(enriched_data.idioms)
+        enriched_data.idioms = _normalize_and_deduplicate_phrases(enriched_data.idioms)
+    if enriched_data.collocations:
+        enriched_data.collocations = _normalize_and_deduplicate_phrases(enriched_data.collocations)
+    if enriched_data.phrasal_verbs:
+        enriched_data.phrasal_verbs = _normalize_and_deduplicate_phrases(enriched_data.phrasal_verbs)
     
     return enriched_data
