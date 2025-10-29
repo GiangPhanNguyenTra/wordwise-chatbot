@@ -5,8 +5,16 @@ from fastapi import FastAPI
 from app.api import chat, enrichment
 from app.services.mongo_service import MongoService
 from app.embeddings.vector_store import get_embedding_model
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Word Wise Chatbot")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup():
