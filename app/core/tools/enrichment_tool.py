@@ -23,30 +23,50 @@ def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional
 
     print("--- Pre-processing raw dictionary data ---")
     
-    # Xử lý phonetics
+    uk_detail: Optional[PhoneticDetail] = None
+    us_detail: Optional[PhoneticDetail] = None
+    
     phonetics_list = raw_data.get('phonetics', [])
-    if isinstance(phonetics_list, list):
-        new_phonetics = Phonetics()
-        uk_found, us_found = False, False
-        for item in phonetics_list:
-            if not isinstance(item, dict): continue
-            audio_url = item.get('audio', '')
-            if 'uk.mp3' in audio_url and not uk_found:
-                new_phonetics.uk = PhoneticDetail(text=item.get('text'), audio=audio_url)
-                uk_found = True
-            elif 'us.mp3' in audio_url and not us_found:
-                new_phonetics.us = PhoneticDetail(text=item.get('text'), audio=audio_url)
-                us_found = True
-        
-        # Fallback logic
-        if not uk_found and len(phonetics_list) > 0 and isinstance(phonetics_list[0], dict):
-             new_phonetics.uk = PhoneticDetail(text=phonetics_list[0].get('text'), audio=phonetics_list[0].get('audio'))
-        if not us_found and len(phonetics_list) > 1 and isinstance(phonetics_list[1], dict):
-             new_phonetics.us = PhoneticDetail(text=phonetics_list[1].get('text'), audio=phonetics_list[1].get('audio'))
-             
-        raw_data['phonetics'] = new_phonetics.model_dump(exclude_none=True)
 
-    # Chắt lọc definitions và examples
+    if isinstance(phonetics_list, list):
+        # Ưu tiên 1: Tìm chính xác phiên âm UK và US dựa vào audio URL
+        for item in phonetics_list:
+            if not (isinstance(item, dict) and item.get('text') and item.get('audio')):
+                continue 
+            
+            audio_url = item['audio']
+            text = item['text']
+
+            if 'uk.mp3' in audio_url and not uk_detail:
+                uk_detail = PhoneticDetail(text=text, audio=audio_url)
+            elif 'us.mp3' in audio_url and not us_detail:
+                us_detail = PhoneticDetail(text=text, audio=audio_url)
+        
+        # Ưu tiên 2 (Dự phòng): Nếu vẫn thiếu, lấy bất kỳ phiên âm nào có sẵn để lấp chỗ trống
+        if not uk_detail or not us_detail:
+            used_texts = {p.text for p in [uk_detail, us_detail] if p}
+            available_phonetics = [
+                p for p in phonetics_list 
+                if isinstance(p, dict) and p.get('text') and p.get('text') not in used_texts
+            ]
+            
+            if not uk_detail and available_phonetics:
+                fallback_item = available_phonetics.pop(0)
+                uk_detail = PhoneticDetail(text=fallback_item.get('text'), audio=fallback_item.get('audio', ''))
+
+            if not us_detail and available_phonetics:
+                fallback_item = available_phonetics.pop(0)
+                us_detail = PhoneticDetail(text=fallback_item.get('text'), audio=fallback_item.get('audio', ''))
+
+
+    final_phonetics = Phonetics(uk=uk_detail, us=us_detail)
+    
+    phonetics_dump = final_phonetics.model_dump(exclude_none=True)
+    if phonetics_dump:
+        raw_data['phonetics'] = phonetics_dump
+    else:
+        raw_data.pop('phonetics', None)
+
     meanings = raw_data.get('meanings', [])
     if isinstance(meanings, list) and meanings:
         primary_meaning = meanings[0]
@@ -56,7 +76,6 @@ def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional
             raw_data['main_example'] = definitions[0].get('example', '')
         raw_data['main_partOfSpeech'] = primary_meaning.get('partOfSpeech', '')
     
-    # Dọn dẹp các trường không cần thiết để giảm context cho LLM
     raw_data.pop('meanings', None)
     raw_data.pop('license', None)
     
