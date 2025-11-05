@@ -27,37 +27,49 @@ def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional
     us_detail: Optional[PhoneticDetail] = None
     
     phonetics_list = raw_data.get('phonetics', [])
+    other_candidates: List[PhoneticDetail] = []
 
     if isinstance(phonetics_list, list):
-        # Ưu tiên 1: Tìm chính xác phiên âm UK và US dựa vào audio URL
         for item in phonetics_list:
-            if not (isinstance(item, dict) and item.get('text') and item.get('audio')):
-                continue 
+            if not isinstance(item, dict):
+                continue
             
-            audio_url = item['audio']
-            text = item['text']
+            text = item.get('text', '')
+            audio_url = item.get('audio', '')
 
-            if 'uk.mp3' in audio_url and not uk_detail:
-                uk_detail = PhoneticDetail(text=text, audio=audio_url)
-            elif 'us.mp3' in audio_url and not us_detail:
-                us_detail = PhoneticDetail(text=text, audio=audio_url)
+            if not text and not audio_url:
+                continue
+            
+            detail = PhoneticDetail(text=text, audio=audio_url)
+            
+            audio_lower = audio_url.lower()
+            if ('uk.mp3' in audio_lower or '-uk' in audio_lower) and not uk_detail:
+                uk_detail = detail
+            elif ('us.mp3' in audio_lower or '-us' in audio_lower) and not us_detail:
+                us_detail = detail
+            else:
+                other_candidates.append(detail)
         
-        # Ưu tiên 2 (Dự phòng): Nếu vẫn thiếu, lấy bất kỳ phiên âm nào có sẵn để lấp chỗ trống
-        if not uk_detail or not us_detail:
-            used_texts = {p.text for p in [uk_detail, us_detail] if p}
-            available_phonetics = [
-                p for p in phonetics_list 
-                if isinstance(p, dict) and p.get('text') and p.get('text') not in used_texts
-            ]
-            
-            if not uk_detail and available_phonetics:
-                fallback_item = available_phonetics.pop(0)
-                uk_detail = PhoneticDetail(text=fallback_item.get('text'), audio=fallback_item.get('audio', ''))
+        if not uk_detail and other_candidates:
+            for cand in other_candidates:
+                if cand != us_detail:
+                    uk_detail = cand
+                    break
+            if not uk_detail and other_candidates:
+                uk_detail = other_candidates[0]
+                
+        if not us_detail and other_candidates:
+            for cand in other_candidates:
+                if cand != uk_detail:
+                    us_detail = cand
+                    break
+            if not us_detail and other_candidates:
+                us_detail = other_candidates[0]
 
-            if not us_detail and available_phonetics:
-                fallback_item = available_phonetics.pop(0)
-                us_detail = PhoneticDetail(text=fallback_item.get('text'), audio=fallback_item.get('audio', ''))
-
+        if us_detail and not uk_detail:
+            uk_detail = us_detail
+        elif uk_detail and not us_detail:
+            us_detail = uk_detail
 
     final_phonetics = Phonetics(uk=uk_detail, us=us_detail)
     
