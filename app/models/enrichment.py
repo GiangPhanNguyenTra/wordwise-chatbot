@@ -7,3 +7,7 @@ class BulkEnrichRequest(BaseModel):
 
 class BulkEnrichResponse(BaseModel):
     results: List[EnrichedWord]
+
+class ContextualEnrichRequest(BaseModel):
+    word: str
+    context: str

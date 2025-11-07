@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
 from app.models.word import EnrichedWord
-from app.models.enrichment import BulkEnrichRequest, BulkEnrichResponse
+from app.models.enrichment import BulkEnrichRequest, BulkEnrichResponse, ContextualEnrichRequest
 from app.core.tools.enrichment_tool import enrich_word_data
 
 router = APIRouter()
@@ -38,3 +38,16 @@ async def enrich_bulk_words_endpoint(request: BulkEnrichRequest):
     except Exception as e:
         print(f"Error in bulk enrichment: {e}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred during bulk processing.")
+    
+@router.post(
+    "/contextual",
+    response_model=EnrichedWord,
+    summary="Enrich a single word using provided context"
+)
+async def enrich_contextual_word_endpoint(request: ContextualEnrichRequest):
+    try:
+        enriched_result = await enrich_word_data(request.word, request.context)
+        return enriched_result
+    except Exception as e:
+        print(f"Error enriching contextual word '{request.word}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enrich word with context: {request.word}")

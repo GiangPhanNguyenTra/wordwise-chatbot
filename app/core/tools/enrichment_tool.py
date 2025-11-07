@@ -5,17 +5,66 @@ from app.core.tools.llm_tool import structured_llm_call
 from app.core.tools.dictionary_tool import fetch_dictionary_data
 from app.utils.helpers import load_prompt
 
-def _normalize_and_deduplicate_phrases(phrases: List[TranslatedPhrase]) -> List[TranslatedPhrase]:
+def _filter_and_deduplicate_phrases(
+    word: str, 
+    phrases: List[TranslatedPhrase], 
+    require_root_word: bool
+) -> List[TranslatedPhrase]:
     seen = set()
     unique_phrases = []
+    word_lower = word.lower()
+
     for phrase_pair in phrases:
         if not (isinstance(phrase_pair, TranslatedPhrase) and phrase_pair.en):
             continue
-        normalized_phrase = phrase_pair.en.lower().strip().removeprefix("to ").removeprefix("to be ")
+            
+        phrase_en = phrase_pair.en.lower().strip()
+        normalized_phrase = phrase_en.removeprefix("to ").removeprefix("to be ")
+        
+        # 1. QUY TẮC PHẢI LÀ CỤM TỪ (> 1 từ)
+        if len(phrase_en.split()) <= 1:
+            continue
+            
+        # 2. QUY TẮC PHẢI CHỨA TỪ GỐC (nếu được yêu cầu)
+        if require_root_word and word_lower not in phrase_en:
+            continue
+
+        # 3. LOẠI BỎ TRÙNG LẶP
         if normalized_phrase not in seen:
             seen.add(normalized_phrase)
             unique_phrases.append(phrase_pair)
+            
     return unique_phrases
+
+def _post_process_enriched_data(data: EnrichedWord) -> EnrichedWord:
+    # Logic dọn dẹp các trường khác giữ nguyên
+    
+    # 1. ÁP DỤNG LỌC NGHIÊM NGẶT CHO IDIOMS_COLLOCATIONS (PHẢI CHỨA TỪ GỐC)
+    if data.idioms_collocations:
+        data.idioms_collocations = _filter_and_deduplicate_phrases(
+            data.word, data.idioms_collocations, require_root_word=True
+        )
+
+    # 2. ÁP DỤNG LỌC CHO PHRASAL_VERBS (Không cần chứa từ gốc, nhưng > 1 từ)
+    if data.phrasal_verbs:
+        data.phrasal_verbs = _filter_and_deduplicate_phrases(
+            data.word, data.phrasal_verbs, require_root_word=False
+        )
+
+    # 3. Lớp bảo vệ chống Phrasal Verbs ảo
+    if data.partOfSpeech != 'verb' and data.phrasal_verbs:
+        data.phrasal_verbs = []
+        
+    # 4. Lớp bảo vệ chống trùng lặp chéo
+    if data.idioms_collocations and data.phrasal_verbs:
+        phrasal_verb_texts = {pv.en.lower().strip() for pv in data.phrasal_verbs}
+        data.idioms_collocations = [
+            ic for ic in data.idioms_collocations 
+            if ic.en.lower().strip() not in phrasal_verb_texts
+        ]
+        
+    return data
+
 
 def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not raw_data:
@@ -93,7 +142,7 @@ def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional
     
     return raw_data
 
-async def enrich_word_data(word: str) -> EnrichedWord:
+async def enrich_word_data(word: str, context: Optional[str] = None) -> EnrichedWord:
     raw_data = await fetch_dictionary_data(word)
     
     processed_raw_data = _pre_process_dictionary_data(raw_data)
@@ -101,18 +150,17 @@ async def enrich_word_data(word: str) -> EnrichedWord:
     raw_data_str = str(processed_raw_data) if processed_raw_data else "No dictionary data found."
     
     enrich_prompt_cfg = load_prompt("enrichment")
+    
+    prompt_kwargs = {
+        "word": word,
+        "raw_data": raw_data_str,
+        "context": context if context else ""
+    }
+    
     enriched_data = await structured_llm_call(
         enrich_prompt_cfg["template"],
         EnrichedWord,
-        word=word,
-        raw_data=raw_data_str
+        **prompt_kwargs
     )
     
-    if enriched_data.idioms_collocations:
-        enriched_data.idioms_collocations = _normalize_and_deduplicate_phrases(enriched_data.idioms_collocations)
-    if enriched_data.phrasal_verbs:
-        enriched_data.phrasal_verbs = _normalize_and_deduplicate_phrases(enriched_data.phrasal_verbs)
-    if enriched_data.partOfSpeech != 'verb' and enriched_data.phrasal_verbs:
-        enriched_data.phrasal_verbs = []
-        
-    return enriched_data
+    return _post_process_enriched_data(enriched_data)
