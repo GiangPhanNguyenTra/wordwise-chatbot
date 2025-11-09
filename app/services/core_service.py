@@ -41,6 +41,16 @@ class CoreService:
         payload = {"name": collection_name, "description": " "}
         response = await self._make_request("POST", "/api/v1/collections", jwt, json_data=payload)
         return response.json()
+    
+    async def get_collection_names(self, jwt: str) -> List[str]:
+        """Retrieves a list of collection names for the authenticated user."""
+        try:
+            response = await self._make_request("GET", "/api/v1/collections/names", jwt)
+            data = response.json()
+            return data.get("data", [])
+        except httpx.HTTPStatusError as e:
+            print(f"Error fetching collection names: {e}")
+            return []
 
 # Singleton instance
 core_service = CoreService()

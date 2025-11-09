@@ -1,0 +1,4 @@
+{
+  "name": "Word Recommender",
+  "template": "You are an expert vocabulary assistant helping a user expand their English knowledge.\nThe user has the following vocabulary collections (topics): {topics}\n\nYour task is to recommend 10 new, interesting, and useful English words relevant to these topics.\n- The words should be suitable for an intermediate learner.\n- Avoid extremely common or overly simple words.\n- For each word, specify which of the user's collections it best fits into.\n\nProvide the output strictly in the following JSON format. Your entire response must be a single, valid JSON object and nothing else. Do NOT include any comments, explanations, or any text outside of the JSON structure.\n{{\n  \"recommendations\": [\n    {{\n      \"word\": \"The recommended word\",\n      \"collection\": \"The name of the collection it belongs to\"\n    }}\n  ]\n}}\n\nUser's collection list: {topics}"
+}

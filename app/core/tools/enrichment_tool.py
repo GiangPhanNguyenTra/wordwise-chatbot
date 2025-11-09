@@ -1,5 +1,6 @@
-# app/core/tools/enrichment_tool.py
+import json
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 from app.models.word import EnrichedWord, TranslatedPhrase, Phonetics, PhoneticDetail
 from app.core.tools.llm_tool import structured_llm_call
 from app.core.tools.dictionary_tool import fetch_dictionary_data
@@ -37,8 +38,6 @@ def _filter_and_deduplicate_phrases(
     return unique_phrases
 
 def _post_process_enriched_data(data: EnrichedWord) -> EnrichedWord:
-    # Logic dọn dẹp các trường khác giữ nguyên
-    
     # 1. ÁP DỤNG LỌC NGHIÊM NGẶT CHO IDIOMS_COLLOCATIONS (PHẢI CHỨA TỪ GỐC)
     if data.idioms_collocations:
         data.idioms_collocations = _filter_and_deduplicate_phrases(
@@ -164,3 +163,26 @@ async def enrich_word_data(word: str, context: Optional[str] = None) -> Enriched
     )
     
     return _post_process_enriched_data(enriched_data)
+
+class BulkEnrichedWordsResponse(BaseModel):
+    results: List[EnrichedWord]
+
+async def batch_enrich_words_data(words: List[str]) -> List[EnrichedWord]:
+    if not words:
+        return []
+    
+    prompt_config = load_prompt("batch_enrich_words")
+    
+    # Chuyển danh sách từ thành một chuỗi JSON để đưa vào prompt
+    words_json_string = json.dumps(words)
+    
+    try:
+        response_model = await structured_llm_call(
+            prompt_config["template"],
+            BulkEnrichedWordsResponse,
+            words_json_string=words_json_string
+        )
+        return response_model.results
+    except Exception as e:
+        print(f"Failed to batch enrich words: {e}")
+        return []
