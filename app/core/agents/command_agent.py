@@ -80,15 +80,22 @@ async def handle_add_word(state: AgentState) -> Dict[str, Any]:
     return await _execute_add_word_to_core(jwt, word_to_add, target_collection_name)
 
 async def handle_create_collection(state: AgentState) -> Dict[str, Any]:
-    """Handles the 'create_collection' intent."""
     jwt = state["request"].jwt
     if not jwt:
         return {"response_type": "error", "agent_outcome": {"message": "Hành động này yêu cầu xác thực. Vui lòng cung cấp token."}}
         
     msg = state["request"].message
-    # Sử dụng LLM để trích xuất tên collection
-    prompt = f"Extract the collection name from the following user request: '{msg}'. Respond with only the name."
-    entities = await structured_llm_call(prompt, CreateCollectionExtraction, user_message=msg)
+    
+    prompt_template = """From the user's message, extract the name of the collection they want to create.
+The user's message is: '{user_message}'.
+Your response must be a single, valid JSON object with one key: 'collection'.
+For example: {{"collection": "My New Collection"}}"""
+
+    entities = await structured_llm_call(
+        prompt_template,
+        CreateCollectionExtraction,
+        user_message=msg
+    )
 
     collection_name = entities.collection
     if not collection_name:
