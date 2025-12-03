@@ -12,11 +12,26 @@ class CoreService:
 
     async def _make_request(self, method: str, endpoint: str, jwt: str, params: Optional[Dict] = None, json_data: Optional[Dict] = None) -> httpx.Response:
         headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
+        
+        base = self.base_url.rstrip("/")
+        path = endpoint.lstrip("/")
+        
+        full_url = f"{base}/{path}"
+    
+        print(f"--- CORE SERVICE CALL: {method} {full_url}")
+        
         async with httpx.AsyncClient() as client:
-            res = await client.request(method, f"{self.base_url}{endpoint}", headers=headers, params=params, json=json_data)
-            res.raise_for_status()  
+            res = await client.request(
+                method, 
+                full_url, 
+                headers=headers, 
+                params=params, 
+                json=json_data,
+                timeout=10.0 
+            )
+            res.raise_for_status()
             return res
-
+        
     async def check_collection_exists(self, collection_name: str, jwt: str) -> bool:
         """Checks if a collection exists for the user."""
         try:
