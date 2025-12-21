@@ -64,32 +64,24 @@ def _post_process_enriched_data(data: EnrichedWord) -> EnrichedWord:
         
     return data
 
-
 def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not raw_data:
         return None
 
     print("--- Pre-processing raw dictionary data ---")
     
+    # --- GIỮ NGUYÊN LOGIC PHONETICS CỦA BẠN ---
     uk_detail: Optional[PhoneticDetail] = None
     us_detail: Optional[PhoneticDetail] = None
-    
     phonetics_list = raw_data.get('phonetics', [])
     other_candidates: List[PhoneticDetail] = []
 
     if isinstance(phonetics_list, list):
         for item in phonetics_list:
-            if not isinstance(item, dict):
-                continue
-            
-            text = item.get('text', '')
-            audio_url = item.get('audio', '')
-
-            if not text and not audio_url:
-                continue
-            
+            if not isinstance(item, dict): continue
+            text = item.get('text', ''); audio_url = item.get('audio', '')
+            if not text and not audio_url: continue
             detail = PhoneticDetail(text=text, audio=audio_url)
-            
             audio_lower = audio_url.lower()
             if ('uk.mp3' in audio_lower or '-uk' in audio_lower) and not uk_detail:
                 uk_detail = detail
@@ -103,32 +95,46 @@ def _pre_process_dictionary_data(raw_data: Optional[Dict[str, Any]]) -> Optional
                 if cand != us_detail:
                     uk_detail = cand
                     break
-            if not uk_detail and other_candidates:
-                uk_detail = other_candidates[0]
-                
+            if not uk_detail and other_candidates: uk_detail = other_candidates[0]
         if not us_detail and other_candidates:
             for cand in other_candidates:
                 if cand != uk_detail:
                     us_detail = cand
                     break
-            if not us_detail and other_candidates:
-                us_detail = other_candidates[0]
-
-        if us_detail and not uk_detail:
-            uk_detail = us_detail
-        elif uk_detail and not us_detail:
-            us_detail = uk_detail
+            if not us_detail and other_candidates: us_detail = other_candidates[0]
+        if us_detail and not uk_detail: uk_detail = us_detail
+        elif uk_detail and not us_detail: us_detail = uk_detail
 
     final_phonetics = Phonetics(uk=uk_detail, us=us_detail)
-    
     phonetics_dump = final_phonetics.model_dump(exclude_none=True)
     if phonetics_dump:
         raw_data['phonetics'] = phonetics_dump
     else:
         raw_data.pop('phonetics', None)
 
+    # --- CẬP NHẬT LOGIC LẤY MEANINGS VÀ SYNONYMS ---
     meanings = raw_data.get('meanings', [])
+    all_extracted_synonyms = set() # Dùng set để tránh trùng
+
     if isinstance(meanings, list) and meanings:
+        # Lấy synonyms ở cấp độ cao nhất của API (nếu có)
+        top_syns = raw_data.get('synonyms', [])
+        if isinstance(top_syns, list): all_extracted_synonyms.update(top_syns)
+
+        for m in meanings:
+            # Lấy synonyms ở cấp độ meaning
+            m_syns = m.get('synonyms', [])
+            if isinstance(m_syns, list): all_extracted_synonyms.update(m_syns)
+            
+            # Lấy synonyms ở cấp độ definition
+            for d in m.get('definitions', []):
+                d_syns = d.get('synonyms', [])
+                if isinstance(d_syns, list): all_extracted_synonyms.update(d_syns)
+
+        # Lưu lại bản danh sách synonyms đã gộp
+        raw_data['extracted_synonyms'] = list(all_extracted_synonyms)
+
+        # Giữ nguyên logic lấy definition chính của bạn
         primary_meaning = meanings[0]
         definitions = primary_meaning.get('definitions', [])
         if definitions and isinstance(definitions[0], dict):
