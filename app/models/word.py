@@ -46,4 +46,9 @@ class EnrichedWord(BaseModel):
                 if len(phonetics_value) > 0: new_phonetics.uk = PhoneticDetail(**phonetics_value[0])
                 if len(phonetics_value) > 1: new_phonetics.us = PhoneticDetail(**phonetics_value[1])
                 data['phonetics'] = new_phonetics.model_dump(exclude_none=True)
+
+            source_value = data.get('source')
+            if isinstance(source_value, list):
+                # Nếu là list, lấy phần tử đầu tiên, nếu list rỗng thì để None
+                data['source'] = source_value[0] if len(source_value) > 0 else "WordWise"
         return data

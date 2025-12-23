@@ -5,6 +5,7 @@ from app.models.word import EnrichedWord, TranslatedPhrase, Phonetics, PhoneticD
 from app.core.tools.llm_tool import structured_llm_call
 from app.core.tools.dictionary_tool import fetch_dictionary_data
 from app.utils.helpers import load_prompt
+import asyncio
 
 def _filter_and_deduplicate_phrases(
     word: str, 
@@ -176,19 +177,31 @@ class BulkEnrichedWordsResponse(BaseModel):
 async def batch_enrich_words_data(words: List[str]) -> List[EnrichedWord]:
     if not words:
         return []
+
+    # Chia nhỏ 20 từ thành các nhóm 7-10 từ để tránh lỗi cắt cụt JSON (Token Limit)
+    chunk_size = 7 
+    chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
     
+    all_results = []
     prompt_config = load_prompt("batch_enrich_words")
-    
-    # Chuyển danh sách từ thành một chuỗi JSON để đưa vào prompt
-    words_json_string = json.dumps(words)
-    
-    try:
-        response_model = await structured_llm_call(
-            prompt_config["template"],
-            BulkEnrichedWordsResponse,
-            words_json_string=words_json_string
-        )
-        return response_model.results
-    except Exception as e:
-        print(f"Failed to batch enrich words: {e}")
-        return []
+
+    for chunk in chunks:
+        words_json_string = json.dumps(chunk)
+        try:
+            # Gọi LLM cho từng nhóm nhỏ
+            response_model = await structured_llm_call(
+                prompt_config["template"],
+                BulkEnrichedWordsResponse,
+                words_json_string=words_json_string
+            )
+            if response_model and response_model.results:
+                all_results.extend(response_model.results)
+            
+            # Nghỉ một chút giữa các lần gọi để tránh Rate Limit 429
+            await asyncio.sleep(1) 
+            
+        except Exception as e:
+            print(f"Failed to enrich chunk {chunk}: {e}")
+            continue
+
+    return all_results
